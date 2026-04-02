@@ -114,7 +114,25 @@
     <!-- 主要內容區 -->
     <main class="flex-1 flex overflow-hidden">
         
-        <!-- 左側：地圖區 -->
+        <!-- 新增：左側專屬技能區 -->
+        <div class="flex-[1] bg-white border-r-4 border-green-200 p-4 flex flex-col shadow-lg z-10 overflow-y-auto">
+            <h2 class="text-xl font-bold mb-4 text-gray-800 border-b-2 border-green-500 pb-2">專屬技能</h2>
+            <p class="text-xs text-gray-500 mb-3">每組限用一次</p>
+            
+            <div class="flex-1 flex flex-col justify-between">
+                <!-- 上半部 (3組) -->
+                <div id="skills-container-top" class="space-y-3 text-sm">
+                    <!-- 技能按鈕由 JS 生成 -->
+                </div>
+                
+                <!-- 下半部 (2組) -->
+                <div id="skills-container-bottom" class="space-y-3 text-sm mt-4">
+                    <!-- 技能按鈕由 JS 生成 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 中央：地圖區 -->
         <div class="flex-[3] p-8 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
             <div id="map-container" class="relative w-full h-full"></div>
             <div id="pieces-container" class="absolute top-0 left-0 w-full h-full"></div>
@@ -153,9 +171,9 @@
             </div>
 
             <!-- 答題判定區 -->
-            <div id="answer-panel" class="bg-yellow-50 rounded-lg p-4 mb-4 border border-yellow-200 hidden">
+            <div id="answer-panel" class="bg-yellow-50 rounded-lg p-4 mb-4 border border-yellow-200 hidden mt-auto">
                 <h3 class="font-bold text-center mb-2">回合操作</h3>
-                <p class="text-xs text-gray-600 mb-3 text-center">答對後請直接手動拖移棋子前進！</p>
+                <p class="text-xs text-gray-600 mb-3 text-center">前進後請直接手動拖移棋子！</p>
                 <div class="flex gap-2">
                     <button id="btn-correct" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerCorrect()">
                         <i class="fas fa-check"></i> 答對/換下一組
@@ -163,17 +181,13 @@
                     <button id="btn-wrong" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerWrong()">
                         <i class="fas fa-times"></i> 答錯 (停留)
                     </button>
+                    <!-- 免答金牌專屬按鈕 -->
+                    <button id="btn-free-answer" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 rounded transition text-sm hidden" onclick="useFreeAnswer()">
+                        <i class="fas fa-medal"></i> 免答金牌/換下一組
+                    </button>
                     <button id="btn-skip" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 rounded transition text-sm hidden" onclick="endTurn()">
                         <i class="fas fa-forward"></i> 結束回合
                     </button>
-                </div>
-            </div>
-
-            <!-- 各組專屬技能區 -->
-            <div class="mb-2 flex-1">
-                <h3 class="font-bold text-gray-700 mb-2 border-b border-gray-300 pb-1">專屬技能 (每組限用一次)</h3>
-                <div id="skills-container" class="space-y-2 text-sm">
-                    <!-- 技能按鈕由 JS 生成 -->
                 </div>
             </div>
 
@@ -246,7 +260,7 @@
             { type: 'good', icon: '🌿', title: '發現新物種！', desc: '林奈的祝福，你的分類學論文大受歡迎。（效果：手動往前推進 2 格）' },
             { type: 'good', icon: '🌱', title: '豌豆雜交大成功！', desc: '孟德爾顯靈，你精準預測了隱性基因。（效果：獲得一次「免答題/直接算對」的特權）' },
             { type: 'good', icon: '🚢', title: '搭上小獵犬號', desc: '跟著達爾文順風出航。（效果：手動把棋子移動到與任意一組同一格的位置）' },
-            { type: 'good', icon: '❤️', title: '老師(美秀)的關愛', desc: '平常表現太好了，獲得額外加持。（效果：下一次擲骰子點數直接 +2）' },
+            { type: 'good', icon: '❤️', title: '老師的關愛', desc: '平常表現太好了，獲得額外加持。（效果：下一次擲骰子點數直接 +2）' },
             { type: 'bad', icon: '🔬', title: '顯微鏡鏡片破裂！', desc: '虎克氣到發抖，你需要花時間修理設備。（效果：暫停一回合）' },
             { type: 'bad', icon: '⚡', title: '實驗室大停電', desc: '培養皿全毀，心血白費。（效果：手動往後退 2 格）' },
             { type: 'bad', icon: '📄', title: '論文被退稿', desc: '你的演化論被質疑，需要重新收集證據。（效果：手動和目前最後一名的組別交換位置）' },
@@ -264,8 +278,16 @@
 
         let gameState = {}; 
         GROUPS.forEach(g => {
-            // 新增 isPaused 屬性，用來記錄是否抽到了暫停卡
-            gameState[g.id] = { position: 0, skillUsed: false, darwinDebuff: false, isPaused: false };
+            // 新增 buff 狀態控制變數
+            gameState[g.id] = { 
+                position: 0, 
+                skillUsed: false, 
+                darwinDebuff: false, 
+                isPaused: false, 
+                hasFreeAnswer: false,
+                plusTwoBuff: false,
+                onlyOneDebuff: false
+            };
         });
 
         let currentDiceRoll = 0; 
@@ -279,23 +301,36 @@
 
         // --- 畫面初始化與渲染 ---
         
-        const skillsContainer = document.getElementById('skills-container');
-        GROUPS.forEach(g => {
-            skillsContainer.innerHTML += `
-                <div class="flex flex-col mb-2 p-2 border rounded bg-gray-50 transition-colors" id="skill-box-${g.id}">
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="font-bold flex items-center">
-                            <span class="inline-block w-3 h-3 rounded-full mr-1 ${g.colorClass}"></span>
-                            ${g.name}
-                        </span>
-                        <button id="btn-skill-${g.id}" class="bg-red-100 text-red-700 hover:bg-red-200 text-xs font-bold py-1 px-2 rounded disabled:opacity-50 disabled:cursor-not-allowed" onclick="requestSkill('${g.id}')" disabled>
-                            使用技能
-                        </button>
+        function renderSkills() {
+            const skillsTop = document.getElementById('skills-container-top');
+            const skillsBottom = document.getElementById('skills-container-bottom');
+            skillsTop.innerHTML = '';
+            skillsBottom.innerHTML = '';
+
+            GROUPS.forEach((g, index) => {
+                const skillHtml = `
+                    <div class="flex flex-col mb-2 p-2 border rounded bg-gray-50 transition-colors shadow-sm" id="skill-box-${g.id}">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold flex items-center">
+                                <span class="inline-block w-3 h-3 rounded-full mr-1 ${g.colorClass}"></span>
+                                ${g.name}
+                            </span>
+                            <button id="btn-skill-${g.id}" class="bg-red-100 text-red-700 hover:bg-red-200 text-xs font-bold py-1 px-2 rounded disabled:opacity-50 disabled:cursor-not-allowed transition" onclick="requestSkill('${g.id}')" disabled>
+                                使用技能
+                            </button>
+                        </div>
+                        <span class="text-xs text-gray-500">${g.skillName}：${g.skillDesc}</span>
                     </div>
-                    <span class="text-xs text-gray-500">${g.skillName}：${g.skillDesc}</span>
-                </div>
-            `;
-        });
+                `;
+                
+                // 索引 0, 1, 2 放上半部；3, 4 放下半部
+                if (index < 3) {
+                    skillsTop.innerHTML += skillHtml;
+                } else {
+                    skillsBottom.innerHTML += skillHtml;
+                }
+            });
+        }
 
         function renderMapAndPieces() {
             const mapContainer = document.getElementById('map-container');
@@ -486,7 +521,10 @@
             }
         });
 
-        setTimeout(renderMapAndPieces, 100);
+        setTimeout(() => {
+            renderSkills();
+            renderMapAndPieces();
+        }, 100);
 
         // --- 遊戲邏輯 ---
 
@@ -547,6 +585,7 @@
             // 初始化所有答題按鈕狀態
             document.getElementById('btn-correct').classList.remove('hidden');
             document.getElementById('btn-wrong').classList.remove('hidden');
+            document.getElementById('btn-free-answer').classList.add('hidden');
             document.getElementById('btn-skip').classList.add('hidden');
 
             // 標示出當前隊伍的技能框
@@ -554,6 +593,13 @@
                 document.getElementById(`skill-box-${g.id}`).classList.remove('border-green-500', 'border-2', 'bg-green-50');
             });
             document.getElementById(`skill-box-${currentGroup.id}`).classList.add('border-green-500', 'border-2', 'bg-green-50');
+
+            // 檢查是否有免答金牌
+            if (gameState[currentGroup.id].hasFreeAnswer) {
+                document.getElementById('btn-correct').classList.add('hidden');
+                document.getElementById('btn-wrong').classList.add('hidden');
+                document.getElementById('btn-free-answer').classList.remove('hidden');
+            }
 
             // 檢查是否受到「暫停一回合」的懲罰
             if (gameState[currentGroup.id].isPaused) {
@@ -566,17 +612,25 @@
                 document.getElementById('answer-panel').classList.remove('hidden');
                 document.getElementById('btn-correct').classList.add('hidden');
                 document.getElementById('btn-wrong').classList.add('hidden');
+                document.getElementById('btn-free-answer').classList.add('hidden');
                 document.getElementById('btn-skip').classList.remove('hidden');
                 
             } 
-            // 檢查是否受到達爾文的環境壓力
-            else if (gameState[currentGroup.id].darwinDebuff) {
+            // 檢查是否受到達爾文的環境壓力 或 吃香蕉懲罰
+            else if (gameState[currentGroup.id].darwinDebuff || gameState[currentGroup.id].onlyOneDebuff) {
+                const reason = gameState[currentGroup.id].darwinDebuff ? "受到環境壓力" : "肚子痛送醫";
                 gameState[currentGroup.id].darwinDebuff = false; // 消耗狀態
+                gameState[currentGroup.id].onlyOneDebuff = false;
+                
                 currentDiceRoll = 1; // 強制1格
                 document.getElementById('roll-dice-btn').disabled = true;
-                document.getElementById('dice-result').innerHTML = `<span class="text-blue-600 font-bold">受到環境壓力！不需擲骰，只能手動前進 <span class="text-3xl text-red-500">1</span> 格！</span>`;
+                document.getElementById('dice-result').innerHTML = `<span class="text-blue-600 font-bold">${reason}！不需擲骰，只能手動前進 <span class="text-3xl text-red-500">1</span> 格！</span>`;
                 document.getElementById('answer-panel').classList.remove('hidden');
             } else {
+                // 檢查是否有美秀老師的關愛 (+2 buff)
+                if (gameState[currentGroup.id].plusTwoBuff) {
+                    document.getElementById('dice-result').innerHTML = `<span class="text-pink-600 font-bold">獲得老師的關愛！本次擲骰結果將會 <span class="text-2xl">+2</span>。</span>`;
+                }
                 document.getElementById('roll-dice-btn').disabled = false;
             }
         }
@@ -591,10 +645,27 @@
             
             setTimeout(() => {
                 diceEl.classList.remove('rolling');
-                currentDiceRoll = Math.floor(Math.random() * 4) + 1; 
                 
-                const icons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four'];
-                diceEl.innerHTML = `<i class="fas ${icons[currentDiceRoll - 1]}"></i>`;
+                const currentGroup = playOrder[currentTurnIndex];
+                let roll = Math.floor(Math.random() * 4) + 1; 
+                
+                // 判定是否套用 +2 Buff
+                if (gameState[currentGroup.id].plusTwoBuff) {
+                    gameState[currentGroup.id].plusTwoBuff = false; // 消耗 Buff
+                    roll += 2;
+                }
+                currentDiceRoll = roll;
+                
+                // 顯示圖標，超過 4 點則預設使用基本骰子圖形
+                let iconClass = 'fa-dice-d20';
+                if (roll === 1) iconClass = 'fa-dice-one';
+                else if (roll === 2) iconClass = 'fa-dice-two';
+                else if (roll === 3) iconClass = 'fa-dice-three';
+                else if (roll === 4) iconClass = 'fa-dice-four';
+                else if (roll === 5) iconClass = 'fa-dice-five';
+                else if (roll === 6) iconClass = 'fa-dice-six';
+
+                diceEl.innerHTML = `<i class="fas ${iconClass}"></i>`;
                 resultEl.innerHTML = `擲出 <span class="text-3xl text-red-500">${currentDiceRoll}</span> 點！`;
                 
                 document.getElementById('answer-panel').classList.remove('hidden');
@@ -609,6 +680,12 @@
         function answerWrong() {
             endTurn();
         }
+        
+        function useFreeAnswer() {
+            const currentGroup = playOrder[currentTurnIndex];
+            gameState[currentGroup.id].hasFreeAnswer = false; // 消耗金牌
+            endTurn();
+        }
 
         function endTurn() {
             document.getElementById('answer-panel').classList.add('hidden');
@@ -620,7 +697,7 @@
                 isFatePhase = true;
                 fateDrawIndex = 0;
                 
-                // 新增：每次進入抽卡階段前，先將卡池洗牌，並抽出 5 張獨一無二的卡片給各組
+                // 每次進入抽卡階段前，先將卡池洗牌，並抽出 5 張獨一無二的卡片給各組
                 let shuffledCards = [...FATE_CARDS].sort(() => Math.random() - 0.5);
                 currentRoundFateCards = shuffledCards.slice(0, 5);
 
@@ -676,13 +753,19 @@
             content.classList.remove('scale-100', 'opacity-100');
             content.classList.add('scale-95', 'opacity-0');
             
-            // 在關閉對話框且確認是抽卡階段時，判定是否抽到了暫停回合的卡片
+            // 在關閉對話框且確認是抽卡階段時，判定是否抽到了特殊狀態的卡片並記錄
             if (isFatePhase) {
                 const currentGroup = playOrder[fateDrawIndex];
                 const card = currentRoundFateCards[fateDrawIndex];
                 
                 if (card.title === '顯微鏡鏡片破裂！') {
                     gameState[currentGroup.id].isPaused = true;
+                } else if (card.title === '豌豆雜交大成功！') {
+                    gameState[currentGroup.id].hasFreeAnswer = true;
+                } else if (card.title === '老師的關愛') {
+                    gameState[currentGroup.id].plusTwoBuff = true;
+                } else if (card.title === '吃掉實驗用的香蕉') {
+                    gameState[currentGroup.id].onlyOneDebuff = true;
                 }
             }
 
@@ -782,6 +865,10 @@
                     gameState[targetId].darwinDebuff = true;
                     const targetName = GROUPS.find(g => g.id === targetId).name;
                     alert(`達爾文發動了環境壓力！【${targetName}組】下一次行動不擲骰，只能手動前進 1 格。`);
+                } else if (groupId === 'linnaeus') {
+                    alert('林奈發動了重新分類！請老師更換一道新題目。');
+                } else if (groupId === 'hooke') {
+                    alert('虎克發動了微觀線索！請老師提供一個關鍵提示。');
                 }
 
                 cancelSkill();
