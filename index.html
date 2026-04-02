@@ -157,11 +157,14 @@
                 <h3 class="font-bold text-center mb-2">回合操作</h3>
                 <p class="text-xs text-gray-600 mb-3 text-center">答對後請直接手動拖移棋子前進！</p>
                 <div class="flex gap-2">
-                    <button class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerCorrect()">
+                    <button id="btn-correct" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerCorrect()">
                         <i class="fas fa-check"></i> 答對/換下一組
                     </button>
-                    <button class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerWrong()">
+                    <button id="btn-wrong" class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerWrong()">
                         <i class="fas fa-times"></i> 答錯 (停留)
+                    </button>
+                    <button id="btn-skip" class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 rounded transition text-sm hidden" onclick="endTurn()">
+                        <i class="fas fa-forward"></i> 結束回合
                     </button>
                 </div>
             </div>
@@ -261,7 +264,8 @@
 
         let gameState = {}; 
         GROUPS.forEach(g => {
-            gameState[g.id] = { position: 0, skillUsed: false, darwinDebuff: false };
+            // 新增 isPaused 屬性，用來記錄是否抽到了暫停卡
+            gameState[g.id] = { position: 0, skillUsed: false, darwinDebuff: false, isPaused: false };
         });
 
         let currentDiceRoll = 0; 
@@ -531,7 +535,7 @@
         // 一般行動階段
         function startTurn() {
             const currentGroup = playOrder[currentTurnIndex];
-            document.getElementById('current-turn-name').innerHTML = `${currentGroup.name}組 <span class="text-sm text-gray-500">(答題階段)</span>`;
+            document.getElementById('current-turn-name').innerHTML = `${currentGroup.name}組 <span class="text-sm text-gray-500">(行動階段)</span>`;
             
             document.getElementById('dice-result').textContent = '';
             document.getElementById('dice').innerHTML = '<i class="fas fa-dice-d20"></i>';
@@ -540,14 +544,33 @@
             document.getElementById('dice-container').classList.remove('hidden');
             document.getElementById('draw-fate-btn').classList.add('hidden');
 
+            // 初始化所有答題按鈕狀態
+            document.getElementById('btn-correct').classList.remove('hidden');
+            document.getElementById('btn-wrong').classList.remove('hidden');
+            document.getElementById('btn-skip').classList.add('hidden');
+
             // 標示出當前隊伍的技能框
             GROUPS.forEach(g => {
                 document.getElementById(`skill-box-${g.id}`).classList.remove('border-green-500', 'border-2', 'bg-green-50');
             });
             document.getElementById(`skill-box-${currentGroup.id}`).classList.add('border-green-500', 'border-2', 'bg-green-50');
 
+            // 檢查是否受到「暫停一回合」的懲罰
+            if (gameState[currentGroup.id].isPaused) {
+                gameState[currentGroup.id].isPaused = false; // 消耗暫停狀態
+                
+                document.getElementById('roll-dice-btn').disabled = true;
+                document.getElementById('dice-result').innerHTML = `<span class="text-red-600 font-bold">修理設備中！本回合暫停一次。</span>`;
+                
+                // 顯示答題面板，但只保留「結束回合」的按鈕
+                document.getElementById('answer-panel').classList.remove('hidden');
+                document.getElementById('btn-correct').classList.add('hidden');
+                document.getElementById('btn-wrong').classList.add('hidden');
+                document.getElementById('btn-skip').classList.remove('hidden');
+                
+            } 
             // 檢查是否受到達爾文的環境壓力
-            if (gameState[currentGroup.id].darwinDebuff) {
+            else if (gameState[currentGroup.id].darwinDebuff) {
                 gameState[currentGroup.id].darwinDebuff = false; // 消耗狀態
                 currentDiceRoll = 1; // 強制1格
                 document.getElementById('roll-dice-btn').disabled = true;
@@ -653,6 +676,16 @@
             content.classList.remove('scale-100', 'opacity-100');
             content.classList.add('scale-95', 'opacity-0');
             
+            // 在關閉對話框且確認是抽卡階段時，判定是否抽到了暫停回合的卡片
+            if (isFatePhase) {
+                const currentGroup = playOrder[fateDrawIndex];
+                const card = currentRoundFateCards[fateDrawIndex];
+                
+                if (card.title === '顯微鏡鏡片破裂！') {
+                    gameState[currentGroup.id].isPaused = true;
+                }
+            }
+
             setTimeout(() => {
                 modal.classList.add('hidden');
                 
@@ -677,6 +710,12 @@
             
             const currentGroup = playOrder[currentTurnIndex];
             
+            // 如果該組目前正在被暫停回合中，防呆禁止使用技能
+            if (!document.getElementById('btn-skip').classList.contains('hidden')) {
+                alert('本回合已暫停，無法發動技能喔！');
+                return;
+            }
+
             // 技能發動時機驗證
             if (groupId === 'mendel') {
                 if (isFatePhase || currentGroup.id !== 'mendel' || document.getElementById('answer-panel').classList.contains('hidden')) {
