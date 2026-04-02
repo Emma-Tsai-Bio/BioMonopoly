@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生物大富翁</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f0fdf4;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+        }
+
+        /* 棋子樣式 */
+        .piece {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            position: absolute;
+            transition: all 0.5s ease-in-out;
+            z-index: 10;
+            border: 2px solid white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+            cursor: grab;
+            touch-action: none; /* 防止手機拖移時觸發滾動 */
+        }
+        
+        .piece:active {
+            cursor: grabbing;
+        }
+
+        /* 各組顏色 */
+        .bg-mendel { background-color: #22c55e; }
+        .bg-meishou { background-color: #1f2937; }
+        .bg-darwin { background-color: #3b82f6; }
+        .bg-linnaeus { background-color: #8b5a2b; }
+        .bg-hooke { background-color: #eab308; color: black; text-shadow: none; }
+
+        /* 地圖格子 */
+        .map-cell {
+            width: 80px;
+            height: 80px;
+            border-radius: 10px;
+            background-color: white;
+            border: 3px solid #cbd5e1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #475569;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .map-cell.start { background-color: #bbf7d0; border-color: #22c55e; }
+        .map-cell.end { background-color: #fecaca; border-color: #ef4444; }
+
+        /* 動畫 */
+        @keyframes roll {
+            0% { transform: rotate(0deg) scale(1); }
+            50% { transform: rotate(180deg) scale(1.2); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        .rolling { animation: roll 0.5s ease-in-out; }
+
+        .modal-bg {
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(3px);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- 1. 遊戲封面 (生物大富翁) -->
+    <div id="cover-screen" class="fixed inset-0 bg-gradient-to-br from-green-800 to-green-600 z-50 flex flex-col items-center justify-center text-white transition-opacity duration-500">
+        <i class="fas fa-dna text-9xl mb-8 opacity-80 animate-pulse"></i>
+        <h1 class="text-7xl font-extrabold mb-4 tracking-widest drop-shadow-lg">生物大富翁</h1>
+        <p class="text-2xl mb-8 opacity-90 tracking-wide">探索生命的奧秘，成為最後的贏家！</p>
+        
+        <!-- 新增：封面順序顯示區 -->
+        <div id="cover-order-display" class="hidden mb-8 bg-white/20 p-6 rounded-xl w-80 text-left backdrop-blur-sm shadow-lg border border-white/30">
+            <h3 class="text-2xl font-bold mb-3 border-b border-white/50 pb-2">出發順序：</h3>
+            <ul id="cover-order-list" class="space-y-2 text-xl font-medium tracking-wide"></ul>
+        </div>
+
+        <div class="flex gap-4">
+            <button id="cover-draw-btn" class="bg-blue-500 hover:bg-blue-400 text-white font-bold py-4 px-8 rounded-full text-2xl shadow-2xl transition transform hover:scale-105" onclick="drawOrderCover()">
+                <i class="fas fa-random mr-2"></i>決定組別順序
+            </button>
+            <button id="cover-start-btn" class="hidden bg-yellow-400 hover:bg-yellow-300 text-green-900 font-bold py-4 px-12 rounded-full text-2xl shadow-2xl transition transform hover:scale-105" onclick="startGame()">
+                開始遊戲
+            </button>
+        </div>
+    </div>
+
+    <!-- 頂部資訊列 -->
+    <header class="bg-green-700 text-white p-4 shadow-md flex justify-between items-center z-20 relative">
+        <h1 class="text-2xl font-bold"><i class="fas fa-leaf mr-2"></i>生物大富翁</h1>
+        <div class="flex items-center gap-4">
+            <span class="text-lg font-semibold bg-green-800 px-3 py-1 rounded">目前回合: <span id="round-counter">1</span></span>
+        </div>
+    </header>
+
+    <!-- 主要內容區 -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- 左側：地圖區 -->
+        <div class="flex-[3] p-8 relative overflow-hidden bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+            <div id="map-container" class="relative w-full h-full"></div>
+            <div id="pieces-container" class="absolute top-0 left-0 w-full h-full"></div>
+        </div>
+
+        <!-- 右側：控制面板區 -->
+        <div class="flex-[1] bg-white border-l-4 border-green-200 p-4 flex flex-col shadow-lg z-10 overflow-y-auto">
+            
+            <h2 class="text-xl font-bold mb-4 text-gray-800 border-b-2 border-green-500 pb-2">操作面板</h2>
+
+            <!-- 順序顯示區 -->
+            <div id="order-display" class="mb-4 hidden">
+                <h3 class="font-bold text-gray-700 mb-2">本局順序：</h3>
+                <ul id="order-list" class="space-y-1 text-sm"></ul>
+            </div>
+
+            <!-- 骰子區 -->
+            <div class="bg-gray-100 rounded-lg p-4 mb-4 text-center shadow-inner">
+                <div class="mb-2 font-bold text-gray-700">目前行動：<br><span id="current-turn-name" class="text-xl text-green-600">請先抽籤</span></div>
+                
+                <div id="dice-container">
+                    <div id="dice" class="text-6xl text-blue-500 my-4 h-16 flex justify-center items-center">
+                        <i class="fas fa-dice-d20"></i>
+                    </div>
+                    <div id="dice-result" class="text-xl font-bold text-gray-800 h-8 mb-2"></div>
+                    
+                    <button id="roll-dice-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded shadow transition disabled:opacity-50 disabled:cursor-not-allowed" onclick="rollDice()" disabled>
+                        擲骰子 (1~4點)
+                    </button>
+                </div>
+
+                <!-- 抽卡按鈕 (輪到抽卡階段時顯示) -->
+                <button id="draw-fate-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded shadow-lg transition animate-pulse hidden mt-2" onclick="drawFateCard()">
+                    <i class="fas fa-bolt mr-2"></i> 抽取機會命運卡
+                </button>
+            </div>
+
+            <!-- 答題判定區 -->
+            <div id="answer-panel" class="bg-yellow-50 rounded-lg p-4 mb-4 border border-yellow-200 hidden">
+                <h3 class="font-bold text-center mb-2">回合操作</h3>
+                <p class="text-xs text-gray-600 mb-3 text-center">答對後請直接手動拖移棋子前進！</p>
+                <div class="flex gap-2">
+                    <button class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerCorrect()">
+                        <i class="fas fa-check"></i> 答對/換下一組
+                    </button>
+                    <button class="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-2 rounded transition text-sm" onclick="answerWrong()">
+                        <i class="fas fa-times"></i> 答錯 (停留)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 各組專屬技能區 -->
+            <div class="mb-2 flex-1">
+                <h3 class="font-bold text-gray-700 mb-2 border-b border-gray-300 pb-1">專屬技能 (每組限用一次)</h3>
+                <div id="skills-container" class="space-y-2 text-sm">
+                    <!-- 技能按鈕由 JS 生成 -->
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- 模態框：技能確認對話框 -->
+    <div id="skill-modal" class="fixed inset-0 modal-bg flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h2 class="text-2xl font-bold mb-2 text-green-700" id="skill-modal-title">技能名稱</h2>
+            <p class="text-gray-700 mb-4" id="skill-modal-desc">技能說明</p>
+            
+            <!-- 達爾文專屬選擇目標區 -->
+            <div id="darwin-target-container" class="hidden mb-6 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <label class="block text-sm font-bold text-blue-800 mb-2">選擇環境壓力的目標：</label>
+                <select id="darwin-target-select" class="w-full border border-blue-300 p-2 rounded text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
+            </div>
+
+            <div class="flex gap-3 justify-end">
+                <button class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded transition" onclick="cancelSkill()">
+                    取消
+                </button>
+                <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition" onclick="confirmSkill()">
+                    確認發動
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模態框：顯示機會命運卡結果 -->
+    <div id="fate-modal" class="fixed inset-0 modal-bg flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl transform transition-all scale-95 opacity-0" id="fate-modal-content">
+            <div class="text-center">
+                <div id="fate-icon" class="text-5xl mb-4"></div>
+                <h2 id="fate-title" class="text-2xl font-bold mb-2"></h2>
+                <p id="fate-desc" class="text-gray-700 text-lg mb-6"></p>
+                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-full transition w-full" onclick="closeFateModal()">
+                    確認並換下一組
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 模態框：顯示獲勝者 -->
+    <div id="win-modal" class="fixed inset-0 modal-bg flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center">
+            <div class="text-yellow-400 text-6xl mb-4"><i class="fas fa-trophy"></i></div>
+            <h2 class="text-3xl font-bold text-gray-800 mb-2">遊戲結束！</h2>
+            <p id="win-msg" class="text-xl text-green-600 font-bold mb-6"></p>
+            <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-full transition" onclick="location.reload()">
+                重新開始遊戲
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- 遊戲資料設定 ---
+        const TOTAL_CELLS = 15;
+        
+        const GROUPS = [
+            { id: 'mendel', name: '孟德爾', char: '孟', colorClass: 'bg-mendel', skillName: '顯性預測', skillDesc: '擲完骰子後若不滿意，可重新擲一次' },
+            { id: 'meishou', name: '美秀', char: '美', colorClass: 'bg-meishou', skillName: '黑熊突進', skillDesc: '輪到自己時不擲骰，直接前進2格' },
+            { id: 'darwin', name: '達爾文', char: '達', colorClass: 'bg-darwin', skillName: '環境壓力', skillDesc: '指定一組，該組下一次行動不擲骰，強制只前進1格' },
+            { id: 'linnaeus', name: '林奈', char: '林', colorClass: 'bg-linnaeus', skillName: '重新分類', skillDesc: '換一道新題目' },
+            { id: 'hooke', name: '虎克', char: '虎', colorClass: 'bg-hooke', skillName: '微觀線索', skillDesc: '請老師提供關鍵提示' }
+        ];
+
+        // 機會命運卡
+        const FATE_CARDS = [
+            { type: 'good', icon: '🌿', title: '發現新物種！', desc: '林奈的祝福，你的分類學論文大受歡迎。（效果：手動往前推進 2 格）' },
+            { type: 'good', icon: '🌱', title: '豌豆雜交大成功！', desc: '孟德爾顯靈，你精準預測了隱性基因。（效果：獲得一次「免答題/直接算對」的特權）' },
+            { type: 'good', icon: '🚢', title: '搭上小獵犬號', desc: '跟著達爾文順風出航。（效果：手動把棋子移動到與任意一組同一格的位置）' },
+            { type: 'good', icon: '❤️', title: '老師(美秀)的關愛', desc: '平常表現太好了，獲得額外加持。（效果：下一次擲骰子點數直接 +2）' },
+            { type: 'bad', icon: '🔬', title: '顯微鏡鏡片破裂！', desc: '虎克氣到發抖，你需要花時間修理設備。（效果：暫停一回合）' },
+            { type: 'bad', icon: '⚡', title: '實驗室大停電', desc: '培養皿全毀，心血白費。（效果：手動往後退 2 格）' },
+            { type: 'bad', icon: '📄', title: '論文被退稿', desc: '你的演化論被質疑，需要重新收集證據。（效果：手動和目前最後一名的組別交換位置）' },
+            { type: 'bad', icon: '🍌', title: '吃掉實驗用的香蕉', desc: '肚子太餓吃了不該吃的東西，拉肚子送醫。（效果：倒退 1 格，且下一回合只能擲出 1 點）' }
+        ];
+
+        // --- 遊戲狀態變數 ---
+        let playOrder = []; 
+        let currentTurnIndex = 0; 
+        let roundCount = 1; 
+        
+        let isFatePhase = false;
+        let fateDrawIndex = 0;
+
+        let gameState = {}; 
+        GROUPS.forEach(g => {
+            gameState[g.id] = { position: 0, skillUsed: false, darwinDebuff: false };
+        });
+
+        let currentDiceRoll = 0; 
+        let isGameStarted = false;
+        let pendingSkillGroupId = null;
+
+        // --- 拖移相關變數 ---
+        let draggedPiece = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        // --- 畫面初始化與渲染 ---
+        
+        const skillsContainer = document.getElementById('skills-container');
+        GROUPS.forEach(g => {
+            skillsContainer.innerHTML += `
+                <div class="flex flex-col mb-2 p-2 border rounded bg-gray-50 transition-colors" id="skill-box-${g.id}">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="font-bold flex items-center">
+                            <span class="inline-block w-3 h-3 rounded-full mr-1 ${g.colorClass}"></span>
+                            ${g.name}
+                        </span>
+                        <button id="btn-skill-${g.id}" class="bg-red-100 text-red-700 hover:bg-red-200 text-xs font-bold py-1 px-2 rounded disabled:opacity-50 disabled:cursor-not-allowed" onclick="requestSkill('${g.id}')" disabled>
+                            使用技能
+                        </button>
+                    </div>
+                    <span class="text-xs text-gray-500">${g.skillName}：${g.skillDesc}</span>
+                </div>
+            `;
+        });
+
+        function renderMapAndPieces() {
+            const mapContainer = document.getElementById('map-container');
+            const piecesContainer = document.getElementById('pieces-container');
+            mapContainer.innerHTML = '';
+            piecesContainer.innerHTML = '';
+
+            const containerWidth = mapContainer.clientWidth;
+            const containerHeight = mapContainer.clientHeight;
+            
+            const cellCoords = [];
+            const rows = 3;
+            const cols = 5;
+            const cellWidth = 80;
+            const cellHeight = 80;
+            const paddingX = (containerWidth - (cols * cellWidth)) / (cols + 1);
+            const paddingY = (containerHeight - (rows * cellHeight)) / (rows + 1);
+
+            let cellIndex = 0;
+            for (let r = 0; r < rows; r++) {
+                const isLeftToRight = r % 2 === 0;
+                for (let c = 0; c < cols; c++) {
+                    const actualC = isLeftToRight ? c : (cols - 1 - c);
+                    const x = paddingX + actualC * (cellWidth + paddingX);
+                    const y = paddingY + r * (cellHeight + paddingY);
+                    
+                    cellCoords.push({x, y});
+
+                    const cellEl = document.createElement('div');
+                    cellEl.className = 'map-cell absolute';
+                    cellEl.style.left = `${x}px`;
+                    cellEl.style.top = `${y}px`;
+                    
+                    if (cellIndex === 0) {
+                        cellEl.classList.add('start');
+                        cellEl.innerHTML = '起點';
+                    } else if (cellIndex === TOTAL_CELLS - 1) {
+                        cellEl.classList.add('end');
+                        cellEl.innerHTML = '終點';
+                    } else {
+                        cellEl.innerHTML = cellIndex;
+                    }
+                    mapContainer.appendChild(cellEl);
+                    cellIndex++;
+                }
+            }
+
+            window.cellCoords = cellCoords;
+
+            GROUPS.forEach((g) => {
+                const piece = document.createElement('div');
+                piece.id = `piece-${g.id}`;
+                piece.className = `piece ${g.colorClass}`;
+                piece.innerHTML = g.char;
+                
+                // 加入拖移事件監聽
+                piece.addEventListener('mousedown', dragStart);
+                piece.addEventListener('touchstart', dragStart, {passive: false});
+
+                piecesContainer.appendChild(piece);
+            });
+
+            updatePiecesPosition();
+        }
+
+        // --- 手動拖移邏輯 ---
+        function dragStart(e) {
+            draggedPiece = this;
+            this.style.transition = 'none'; // 拖移時取消過渡動畫
+            this.style.zIndex = 50; // 置頂顯示
+
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            
+            const rect = this.getBoundingClientRect();
+            // 計算滑鼠在棋子內的偏移量
+            dragOffsetX = clientX - rect.left;
+            dragOffsetY = clientY - rect.top;
+
+            document.addEventListener('mousemove', dragMove);
+            document.addEventListener('mouseup', dragEnd);
+            document.addEventListener('touchmove', dragMove, {passive: false});
+            document.addEventListener('touchend', dragEnd);
+        }
+
+        function dragMove(e) {
+            if (!draggedPiece) return;
+            if (e.cancelable) e.preventDefault(); // 防止手機拖拉時畫面捲動
+            
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            
+            const containerRect = document.getElementById('pieces-container').getBoundingClientRect();
+            
+            // 相對於容器的坐標
+            let newLeft = clientX - containerRect.left - dragOffsetX;
+            let newTop = clientY - containerRect.top - dragOffsetY;
+
+            draggedPiece.style.left = `${newLeft}px`;
+            draggedPiece.style.top = `${newTop}px`;
+        }
+
+        function dragEnd(e) {
+            if (!draggedPiece) return;
+            
+            // 尋找距離最近的地圖格子，實現吸附與狀態更新
+            const pieceRect = draggedPiece.getBoundingClientRect();
+            const pieceCenterX = pieceRect.left + pieceRect.width / 2;
+            const pieceCenterY = pieceRect.top + pieceRect.height / 2;
+
+            let closestCellIndex = 0;
+            let minDistance = Infinity;
+
+            const cells = document.querySelectorAll('.map-cell');
+            cells.forEach((cell, index) => {
+                const cellRect = cell.getBoundingClientRect();
+                const cellCenterX = cellRect.left + cellRect.width / 2;
+                const cellCenterY = cellRect.top + cellRect.height / 2;
+                const dist = Math.hypot(pieceCenterX - cellCenterX, pieceCenterY - cellCenterY);
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestCellIndex = index;
+                }
+            });
+
+            // 更新內部遊戲狀態 (避免視窗縮放時位置跑掉)
+            const groupId = draggedPiece.id.replace('piece-', '');
+            gameState[groupId].position = closestCellIndex;
+            
+            draggedPiece.style.transition = 'all 0.5s ease-in-out';
+            draggedPiece.style.zIndex = 10;
+            
+            // 自動排版吸附到格子內
+            updatePiecesPosition();
+
+            // 若拖移到最後一格，自動觸發獲勝畫面
+            if (closestCellIndex === TOTAL_CELLS - 1) {
+                const group = GROUPS.find(g => g.id === groupId);
+                setTimeout(() => showWinModal(group), 500);
+            }
+
+            document.removeEventListener('mousemove', dragMove);
+            document.removeEventListener('mouseup', dragEnd);
+            document.removeEventListener('touchmove', dragMove);
+            document.removeEventListener('touchend', dragEnd);
+            draggedPiece = null;
+        }
+
+        // 將所有棋子定位到它們隸屬的格子上 (若同格會自動微調偏移)
+        function updatePiecesPosition() {
+            if (!window.cellCoords) return;
+
+            const positions = {};
+            GROUPS.forEach(g => {
+                const pos = gameState[g.id].position;
+                if (!positions[pos]) positions[pos] = [];
+                positions[pos].push(g.id);
+            });
+
+            GROUPS.forEach(g => {
+                const piece = document.getElementById(`piece-${g.id}`);
+                const pos = gameState[g.id].position;
+                const coords = window.cellCoords[pos];
+                
+                if (coords) {
+                    const siblings = positions[pos];
+                    const indexInCell = siblings.indexOf(g.id);
+                    const totalInCell = siblings.length;
+                    
+                    let offsetX = 0;
+                    let offsetY = 0;
+                    if (totalInCell > 1) {
+                        const angle = (indexInCell / totalInCell) * Math.PI * 2;
+                        const radius = 15; 
+                        offsetX = Math.cos(angle) * radius;
+                        offsetY = Math.sin(angle) * radius;
+                    }
+
+                    piece.style.left = `${coords.x + 20 + offsetX}px`; 
+                    piece.style.top = `${coords.y + 20 + offsetY}px`;
+                }
+            });
+        }
+
+        window.addEventListener('resize', () => {
+            if (document.getElementById('map-container').clientWidth > 0) {
+                renderMapAndPieces();
+            }
+        });
+
+        setTimeout(renderMapAndPieces, 100);
+
+        // --- 遊戲邏輯 ---
+
+        // 封面決定順序
+        function drawOrderCover() {
+            playOrder = [...GROUPS].sort(() => Math.random() - 0.5);
+            
+            // 顯示於封面
+            const coverList = document.getElementById('cover-order-list');
+            coverList.innerHTML = '';
+            playOrder.forEach((g, idx) => {
+                coverList.innerHTML += `<li class="flex items-center"><span class="w-8 inline-block font-bold">${idx+1}.</span> <span class="inline-block w-4 h-4 rounded-full mr-2 ${g.colorClass}"></span>${g.name}組</li>`;
+            });
+
+            // 同步至遊戲內面板
+            const listEl = document.getElementById('order-list');
+            listEl.innerHTML = '';
+            playOrder.forEach((g, idx) => {
+                listEl.innerHTML += `<li class="flex items-center"><span class="w-6 inline-block text-gray-500">${idx+1}.</span> <span class="inline-block w-3 h-3 rounded-full mr-2 ${g.colorClass}"></span>${g.name}組</li>`;
+            });
+
+            document.getElementById('order-display').classList.remove('hidden');
+            
+            // 切換封面按鈕
+            document.getElementById('cover-order-display').classList.remove('hidden');
+            document.getElementById('cover-draw-btn').classList.add('hidden');
+            document.getElementById('cover-start-btn').classList.remove('hidden');
+        }
+
+        // 開始遊戲
+        function startGame() {
+            const cover = document.getElementById('cover-screen');
+            cover.classList.add('opacity-0');
+            setTimeout(() => {
+                cover.classList.add('hidden');
+            }, 500);
+
+            isGameStarted = true;
+            GROUPS.forEach(g => {
+                document.getElementById(`btn-skill-${g.id}`).disabled = false;
+            });
+
+            startTurn();
+        }
+
+        // 一般行動階段
+        function startTurn() {
+            const currentGroup = playOrder[currentTurnIndex];
+            document.getElementById('current-turn-name').innerHTML = `${currentGroup.name}組 <span class="text-sm text-gray-500">(答題階段)</span>`;
+            
+            document.getElementById('dice-result').textContent = '';
+            document.getElementById('dice').innerHTML = '<i class="fas fa-dice-d20"></i>';
+            document.getElementById('answer-panel').classList.add('hidden');
+            
+            document.getElementById('dice-container').classList.remove('hidden');
+            document.getElementById('draw-fate-btn').classList.add('hidden');
+
+            // 標示出當前隊伍的技能框
+            GROUPS.forEach(g => {
+                document.getElementById(`skill-box-${g.id}`).classList.remove('border-green-500', 'border-2', 'bg-green-50');
+            });
+            document.getElementById(`skill-box-${currentGroup.id}`).classList.add('border-green-500', 'border-2', 'bg-green-50');
+
+            // 檢查是否受到達爾文的環境壓力
+            if (gameState[currentGroup.id].darwinDebuff) {
+                gameState[currentGroup.id].darwinDebuff = false; // 消耗狀態
+                currentDiceRoll = 1; // 強制1格
+                document.getElementById('roll-dice-btn').disabled = true;
+                document.getElementById('dice-result').innerHTML = `<span class="text-blue-600 font-bold">受到環境壓力！不需擲骰，只能手動前進 <span class="text-3xl text-red-500">1</span> 格！</span>`;
+                document.getElementById('answer-panel').classList.remove('hidden');
+            } else {
+                document.getElementById('roll-dice-btn').disabled = false;
+            }
+        }
+
+        function rollDice() {
+            const diceEl = document.getElementById('dice');
+            const resultEl = document.getElementById('dice-result');
+            const rollBtn = document.getElementById('roll-dice-btn');
+
+            rollBtn.disabled = true;
+            diceEl.classList.add('rolling');
+            
+            setTimeout(() => {
+                diceEl.classList.remove('rolling');
+                currentDiceRoll = Math.floor(Math.random() * 4) + 1; 
+                
+                const icons = ['fa-dice-one', 'fa-dice-two', 'fa-dice-three', 'fa-dice-four'];
+                diceEl.innerHTML = `<i class="fas ${icons[currentDiceRoll - 1]}"></i>`;
+                resultEl.innerHTML = `擲出 <span class="text-3xl text-red-500">${currentDiceRoll}</span> 點！`;
+                
+                document.getElementById('answer-panel').classList.remove('hidden');
+            }, 600);
+        }
+
+        // 因為改為手動拖移，答對按鈕只負責結束當前介面回合，不自動移動棋子
+        function answerCorrect() {
+            endTurn();
+        }
+
+        function answerWrong() {
+            endTurn();
+        }
+
+        function endTurn() {
+            document.getElementById('answer-panel').classList.add('hidden');
+            currentTurnIndex++;
+
+            if (currentTurnIndex >= playOrder.length) {
+                // 全部組別答完，進入抽卡階段
+                currentTurnIndex = 0;
+                isFatePhase = true;
+                fateDrawIndex = 0;
+                startFateTurn();
+            } else {
+                startTurn();
+            }
+        }
+
+        // 抽卡階段 (每組輪流抽一張)
+        function startFateTurn() {
+            const currentGroup = playOrder[fateDrawIndex];
+            document.getElementById('current-turn-name').innerHTML = `${currentGroup.name}組 <span class="text-sm text-purple-600">(抽卡階段)</span>`;
+            
+            // 隱藏骰子，顯示抽卡按鈕
+            document.getElementById('dice-container').classList.add('hidden');
+            document.getElementById('draw-fate-btn').classList.remove('hidden');
+
+            GROUPS.forEach(g => {
+                document.getElementById(`skill-box-${g.id}`).classList.remove('border-green-500', 'border-2', 'bg-green-50');
+            });
+            document.getElementById(`skill-box-${currentGroup.id}`).classList.add('border-green-500', 'border-2', 'bg-green-50');
+        }
+
+        function drawFateCard() {
+            const card = FATE_CARDS[Math.floor(Math.random() * FATE_CARDS.length)];
+            
+            document.getElementById('fate-icon').textContent = card.icon;
+            document.getElementById('fate-title').textContent = card.title;
+            
+            const titleEl = document.getElementById('fate-title');
+            if(card.type === 'good') { titleEl.className = 'text-2xl font-bold mb-2 text-green-600'; }
+            else { titleEl.className = 'text-2xl font-bold mb-2 text-red-600'; }
+
+            document.getElementById('fate-desc').textContent = card.desc;
+
+            const modal = document.getElementById('fate-modal');
+            const content = document.getElementById('fate-modal-content');
+            modal.classList.remove('hidden');
+            
+            void content.offsetWidth;
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+
+            document.getElementById('draw-fate-btn').classList.add('hidden');
+        }
+
+        function closeFateModal() {
+            const modal = document.getElementById('fate-modal');
+            const content = document.getElementById('fate-modal-content');
+            
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                
+                if (isFatePhase) {
+                    fateDrawIndex++;
+                    if (fateDrawIndex >= playOrder.length) {
+                        isFatePhase = false;
+                        roundCount++;
+                        document.getElementById('round-counter').textContent = roundCount;
+                        startTurn();
+                    } else {
+                        startFateTurn();
+                    }
+                }
+            }, 300);
+        }
+
+        // --- 技能對話框邏輯 ---
+        function requestSkill(groupId) {
+            if (!isGameStarted) return;
+            if (gameState[groupId].skillUsed) return;
+            
+            const currentGroup = playOrder[currentTurnIndex];
+            
+            // 技能發動時機驗證
+            if (groupId === 'mendel') {
+                if (isFatePhase || currentGroup.id !== 'mendel' || document.getElementById('answer-panel').classList.contains('hidden')) {
+                    alert('【顯性預測】必須在「自己的回合擲完骰子後、尚未答題前」發動喔！');
+                    return;
+                }
+            } else if (groupId === 'meishou') {
+                if (isFatePhase || currentGroup.id !== 'meishou' || !document.getElementById('answer-panel').classList.contains('hidden')) {
+                    alert('【黑熊突進】必須在「自己的回合、尚未擲骰子前」發動喔！');
+                    return;
+                }
+            }
+            
+            pendingSkillGroupId = groupId;
+            const groupData = GROUPS.find(g => g.id === groupId);
+            
+            document.getElementById('skill-modal-title').textContent = `發動【${groupData.skillName}】`;
+            document.getElementById('skill-modal-desc').innerHTML = `<strong>效果說明：</strong><br>${groupData.skillDesc}<br><br><span class="text-sm text-red-500">※ 注意：每局遊戲限用一次，確定要現在發動嗎？</span>`;
+            
+            // 達爾文專屬 UI 處理
+            const darwinContainer = document.getElementById('darwin-target-container');
+            if (groupId === 'darwin') {
+                darwinContainer.classList.remove('hidden');
+                const select = document.getElementById('darwin-target-select');
+                select.innerHTML = '';
+                GROUPS.forEach(g => {
+                    if (g.id !== 'darwin') {
+                        select.innerHTML += `<option value="${g.id}">${g.name}組</option>`;
+                    }
+                });
+            } else {
+                darwinContainer.classList.add('hidden');
+            }
+
+            document.getElementById('skill-modal').classList.remove('hidden');
+        }
+
+        function cancelSkill() {
+            pendingSkillGroupId = null;
+            document.getElementById('skill-modal').classList.add('hidden');
+        }
+
+        function confirmSkill() {
+            if (pendingSkillGroupId) {
+                const groupId = pendingSkillGroupId;
+                gameState[groupId].skillUsed = true;
+                const btn = document.getElementById(`btn-skill-${groupId}`);
+                btn.disabled = true;
+                btn.textContent = "已使用";
+                btn.classList.replace('bg-red-100', 'bg-gray-200');
+                btn.classList.replace('text-red-700', 'text-gray-500');
+                
+                if (groupId === 'mendel') {
+                    document.getElementById('answer-panel').classList.add('hidden');
+                    document.getElementById('roll-dice-btn').disabled = false;
+                    document.getElementById('dice-result').innerHTML = `<span class="text-green-600 font-bold text-2xl">發動顯性預測！請再擲一次。</span>`;
+                } else if (groupId === 'meishou') {
+                    document.getElementById('roll-dice-btn').disabled = true;
+                    currentDiceRoll = 2;
+                    document.getElementById('dice-result').innerHTML = `<span class="text-gray-800 font-bold">發動黑熊突進！答對後可手動前進 <span class="text-4xl text-red-500">2</span> 格！</span>`;
+                    document.getElementById('answer-panel').classList.remove('hidden');
+                } else if (groupId === 'darwin') {
+                    const targetId = document.getElementById('darwin-target-select').value;
+                    gameState[targetId].darwinDebuff = true;
+                    const targetName = GROUPS.find(g => g.id === targetId).name;
+                    alert(`達爾文發動了環境壓力！【${targetName}組】下一次行動不擲骰，只能手動前進 1 格。`);
+                }
+
+                cancelSkill();
+            }
+        }
+
+        function showWinModal(winnerGroup) {
+            document.getElementById('win-msg').innerHTML = `恭喜 <strong>${winnerGroup.name}組</strong> 抵達終點！`;
+            document.getElementById('win-modal').classList.remove('hidden');
+        }
+
+    </script>
+</body>
+</html>
