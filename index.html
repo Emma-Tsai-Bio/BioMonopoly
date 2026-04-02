@@ -257,6 +257,7 @@
         
         let isFatePhase = false;
         let fateDrawIndex = 0;
+        let currentRoundFateCards = []; // 儲存這一輪抽出給各組的不重複卡片
 
         let gameState = {}; 
         GROUPS.forEach(g => {
@@ -595,6 +596,11 @@
                 currentTurnIndex = 0;
                 isFatePhase = true;
                 fateDrawIndex = 0;
+                
+                // 新增：每次進入抽卡階段前，先將卡池洗牌，並抽出 5 張獨一無二的卡片給各組
+                let shuffledCards = [...FATE_CARDS].sort(() => Math.random() - 0.5);
+                currentRoundFateCards = shuffledCards.slice(0, 5);
+
                 startFateTurn();
             } else {
                 startTurn();
@@ -617,7 +623,8 @@
         }
 
         function drawFateCard() {
-            const card = FATE_CARDS[Math.floor(Math.random() * FATE_CARDS.length)];
+            // 改為從預先抽好的 5 張不重複卡片中發給對應的組別
+            const card = currentRoundFateCards[fateDrawIndex];
             
             document.getElementById('fate-icon').textContent = card.icon;
             document.getElementById('fate-title').textContent = card.title;
